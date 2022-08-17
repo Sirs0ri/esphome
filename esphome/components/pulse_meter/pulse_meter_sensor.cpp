@@ -7,7 +7,6 @@ namespace pulse_meter {
 static const char *const TAG = "pulse_meter";
 
 void PulseMeterSensor::setup() {
-  ESP_LOGV(TAG, "Using the custom pulse_meter sensor");
   this->pin_->setup();
   this->isr_pin_ = pin_->to_isr();
   this->pin_->attach_interrupt(PulseMeterSensor::gpio_intr, this, gpio::INTERRUPT_ANY_EDGE);
@@ -36,14 +35,14 @@ void PulseMeterSensor::loop() {
 
     const uint32_t time_since_last_edge = (now > this->last_detected_edge_us_)
                                               ? now - this->last_detected_edge_us_
-                                              : UINT32_MAX - (now - this->last_detected_edge_us_);
+                                              : UINT32_MAX - now - this->last_detected_edge_us_;
     if (time_since_last_edge >= this->filter_us_) {
       // Only consider HIGH pulses and "new" edges if sensor state is LOW
       if (!this->sensor_is_high_ && this->isr_pin_.digital_read() &&
           (this->last_detected_edge_us_ != this->last_valid_high_edge_us_)) {
         // Don't measure the first valid pulse (we need at least two pulses to measure the width)
         if (this->last_valid_high_edge_us_ != 0) {
-          ESP_LOGV(TAG, "Got the first pulse, measurements start at the 2nd.");
+          ESP_LOGI(TAG, "Got the first pulse, measurements start at the 2nd.");
           this->pulse_width_us_ = (this->last_detected_edge_us_ > this->last_valid_high_edge_us_)
                                       ? (this->last_detected_edge_us_ - this->last_valid_high_edge_us_)
                                       : UINT32_MAX - (this->last_detected_edge_us_ - this->last_valid_high_edge_us_);
@@ -64,16 +63,16 @@ void PulseMeterSensor::loop() {
   // If we've exceeded our timeout interval without receiving any pulses, assume 0 pulses/min until
   // we get at least two valid pulses.
   if (now < this->last_valid_high_edge_us_) {
-    ESP_LOGD(TAG, "micros() overflow detected, adjusting accordingly");
+    ESP_LOGI(TAG, "micros() overflow detected, adjusting accordingly");
   }
 
   const uint32_t time_since_valid_edge_us = (now > this->last_valid_high_edge_us_)
                                                 ? now - this->last_valid_high_edge_us_
-                                                : UINT32_MAX - (now - this->last_valid_high_edge_us_);
+                                                : UINT32_MAX - now - this->last_valid_high_edge_us_;
   if ((this->last_valid_high_edge_us_ != 0) && (time_since_valid_edge_us > this->timeout_us_) &&
       (this->pulse_width_us_ != 0)) {
-    ESP_LOGD(TAG, "No pulse detected for %us, assuming 0 pulses/min", time_since_valid_edge_us / 1000000);
-    ESP_LOGV(TAG, "No pulse detected for %uus, last pulse: %u, now: %u", time_since_valid_edge_us, this->last_valid_high_edge_us_, now);
+    ESP_LOGI(TAG, "No pulse detected for %us, assuming 0 pulses/min", time_since_valid_edge_us / 1000000);
+    ESP_LOGI(TAG, "No pulse detected for %uus, last pulse: %u, now: %u", time_since_valid_edge_us, this->last_valid_high_edge_us_, now);
     this->pulse_width_us_ = 0;
   }
 
@@ -108,6 +107,7 @@ void PulseMeterSensor::dump_config() {
     ESP_LOGCONFIG(TAG, "  Filtering pulses shorter than %u µs", this->filter_us_);
   }
   ESP_LOGCONFIG(TAG, "  Assuming 0 pulses/min after not receiving a pulse for %us", this->timeout_us_ / 1000000);
+  ESP_LOGI(TAG, "Using the custom pulse_meter sensor");
 }
 
 void IRAM_ATTR PulseMeterSensor::gpio_intr(PulseMeterSensor *sensor) {
